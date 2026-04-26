@@ -1,4 +1,5 @@
 {
+  "user_id": "U0001",
   "signup_days": 180,
   "plan_type": "premium",
   "age": 34,
@@ -59,5 +60,10 @@
   "avg_session_time_14d": 18,
   "avg_session_time_prev_7d": 20,
   "avg_session_time_prev_14d": 22,
-  "session_per_active_day_7d": 17.5
+  "session_per_active_day_7d": 17.5,
+  "metadata": {
+    "source": "manual_test",
+    "client": "local",
+    "request_type": "test"
+  }
 }

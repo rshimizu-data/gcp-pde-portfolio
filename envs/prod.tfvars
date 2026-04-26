@@ -1,0 +1,8 @@
+project_id = "churn-analysis-491912"
+region = "asia-northeast1"
+service_name = "predict-api"
+repo_name = "predict-api-repo"
+service_account_id = "predict-api-sa"
+service_account_email = "predict-api-sa@churn-analysis-491912.iam.gserviceaccount.com"
+image_uri = "asia-northeast1-docker.pkg.dev/churn-analysis-491912/predict-api-repo/predict-api:v1"
+model_uri = "gs://churn-model-bucket-ryo/models/model.pkl"

@@ -1,0 +1,505 @@
+train_cloudrun.py 1行ずつ解説【実運用に寄せた完全版】
+======================================================
+
+前提
+----
+このファイルは、Cloud Run 上で学習バッチを HTTP 経由で起動するための train_cloudrun.py を想定しています。
+役割は次の通りです。
+
+1. BigQuery から user_churn_features を取得する
+2. user_id と label_churn を分離する
+3. LightGBM で 2値分類モデルを学習する
+4. AUC を算出する
+5. 学習済みモデルを /tmp/model.pkl に保存する
+6. GCS に model.pkl をアップロードする
+7. Cloud Run の HTTP エンドポイントとして実行できるようにする
+
+対象コード
+----------
+from __future__ import annotations
+
+import os
+import pickle
+
+import pandas as pd
+import lightgbm as lgb
+from flask import Flask, jsonify
+from google.cloud import bigquery, storage
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+
+app = Flask(__name__)
+
+PROJECT_ID = os.environ.get("PROJECT_ID")
+DATASET = os.environ.get("BQ_DATASET", "your_dataset")
+TABLE = os.environ.get("BQ_TABLE", "user_churn_features")
+BUCKET_NAME = os.environ.get("MODEL_BUCKET")
+
+
+def load_data_from_bigquery() -> pd.DataFrame:
+    client = bigquery.Client(project=PROJECT_ID)
+
+    query = f"""
+    SELECT *
+    FROM `{PROJECT_ID}.{DATASET}.{TABLE}`
+    """
+
+    df = client.query(query).to_dataframe()
+    return df
+
+
+def train_and_save_model() -> dict:
+    df = load_data_from_bigquery()
+
+    X = df.drop(columns=["user_id", "label_churn"])
+    y = df["label_churn"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    model = lgb.LGBMClassifier(
+        objective="binary",
+        n_estimators=100,
+        learning_rate=0.1,
+        random_state=42,
+    )
+
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict_proba(X_test)[:, 1]
+    auc = roc_auc_score(y_test, y_pred)
+
+    local_model_path = "/tmp/model.pkl"
+    with open(local_model_path, "wb") as f:
+        pickle.dump(model, f)
+
+    storage_client = storage.Client(project=PROJECT_ID)
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob("models/model.pkl")
+    blob.upload_from_filename(local_model_path)
+
+    return {
+        "rows": len(df),
+        "auc": float(auc),
+        "model_path": f"gs://{BUCKET_NAME}/models/model.pkl",
+    }
+
+
+@app.route("/", methods=["GET", "POST"])
+def run_training():
+    result = train_and_save_model()
+    return jsonify({"status": "ok", "result": result})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
+
+
+1行ずつ解説
+-----------
+
+1.
+from __future__ import annotations
+
+型ヒントの評価方法を将来互換寄りにするための指定です。
+このファイルでは必須ではありませんが、型ヒントを入れる習慣があるコードではよく使われます。
+
+2.
+import os
+
+環境変数を読むための標準ライブラリです。
+Cloud Run では、プロジェクトID、BigQuery のデータセット名、GCS バケット名などを環境変数で渡すことが多いため必要です。
+
+3.
+import pickle
+
+Python オブジェクトを保存・読み込みするための標準ライブラリです。
+ここでは学習済み LightGBM モデルを model.pkl として保存するために使います。
+
+4.
+import pandas as pd
+
+表形式データを扱うためのライブラリです。
+BigQuery から取得した学習データを DataFrame として扱います。
+
+5.
+import lightgbm as lgb
+
+LightGBM のライブラリです。
+今回の churn 予測モデルの学習本体に使います。
+
+6.
+from flask import Flask, jsonify
+
+Flask は軽量な Web フレームワークです。
+Cloud Run は HTTP リクエストでコンテナを起動・実行するため、入口として Flask を使っています。
+jsonify は辞書型の結果を JSON 形式で返すために使います。
+
+7.
+from google.cloud import bigquery, storage
+
+BigQuery と Cloud Storage のクライアントライブラリです。
+bigquery は学習データの取得、
+storage は学習済みモデルの保存先として使います。
+
+8.
+from sklearn.metrics import roc_auc_score
+
+AUC を計算するための関数です。
+2値分類モデルの順位付け性能を見るために使います。
+
+9.
+from sklearn.model_selection import train_test_split
+
+学習データとテストデータに分割するための関数です。
+モデル評価のために使います。
+
+10.
+app = Flask(__name__)
+
+Flask アプリのインスタンスを作っています。
+Cloud Run ではこの Flask アプリが HTTP リクエストを受けます。
+
+11.
+PROJECT_ID = os.environ.get("PROJECT_ID")
+
+環境変数 PROJECT_ID を取得しています。
+例: my-ml-project
+
+12.
+DATASET = os.environ.get("BQ_DATASET", "your_dataset")
+
+環境変数 BQ_DATASET を取得しています。
+設定されていない場合は仮の値 your_dataset を使います。
+本番では必ず実際のデータセット名に置き換えます。
+
+13.
+TABLE = os.environ.get("BQ_TABLE", "user_churn_features")
+
+環境変数 BQ_TABLE を取得しています。
+学習対象のテーブル名です。
+デフォルト値は user_churn_features にしています。
+
+14.
+BUCKET_NAME = os.environ.get("MODEL_BUCKET")
+
+環境変数 MODEL_BUCKET を取得しています。
+学習済みモデルを置く GCS バケット名です。
+
+15.
+def load_data_from_bigquery() -> pd.DataFrame:
+
+BigQuery から学習データを読み込む関数の定義です。
+戻り値は pandas DataFrame です。
+
+16.
+    client = bigquery.Client(project=PROJECT_ID)
+
+BigQuery に接続するクライアントを作成しています。
+どの GCP プロジェクトに対してクエリするかを PROJECT_ID で指定しています。
+
+17.
+    query = f"""
+
+複数行の SQL を f文字列として開始しています。
+変数を文字列に埋め込むためです。
+
+18.
+    SELECT *
+
+対象テーブルの全列を取得しています。
+PoC や初期実装では簡単ですが、実務では必要列だけ明示するほうが安全です。
+
+19.
+    FROM `{PROJECT_ID}.{DATASET}.{TABLE}`
+
+BigQuery の完全修飾テーブル名です。
+例:
+`my-project.feature_store.user_churn_features`
+
+20.
+    """
+
+SQL 文字列の終了です。
+
+21.
+    df = client.query(query).to_dataframe()
+
+BigQuery にクエリを投げて、その結果を pandas DataFrame に変換しています。
+この df が学習元データになります。
+
+22.
+    return df
+
+取得した DataFrame を返しています。
+
+23.
+def train_and_save_model() -> dict:
+
+学習から保存までをまとめて実行する関数です。
+戻り値は辞書型で、件数、AUC、保存先を返します。
+
+24.
+    df = load_data_from_bigquery()
+
+BigQuery から学習データを読み込んでいます。
+
+25.
+    X = df.drop(columns=["user_id", "label_churn"])
+
+特徴量 X を作っています。
+user_id は識別子なので学習に使わず、
+label_churn は正解ラベルなので特徴量から除きます。
+
+26.
+    y = df["label_churn"]
+
+目的変数 y を作っています。
+この列が 0/1 の churn ラベルです。
+
+27.
+    X_train, X_test, y_train, y_test = train_test_split(
+
+学習用データとテスト用データへの分割を始めています。
+
+28.
+        X, y, test_size=0.2, random_state=42, stratify=y
+
+X と y を分割しています。
+test_size=0.2 は 20% をテスト用にする指定です。
+random_state=42 は毎回同じ分割になるようにする指定です。
+stratify=y は 0 と 1 の比率が train/test でなるべく崩れないようにする指定です。
+churn 予測のようにラベル不均衡が起きやすい問題では重要です。
+
+29.
+    )
+
+train_test_split の呼び出し終わりです。
+
+30.
+    model = lgb.LGBMClassifier(
+
+LightGBM の分類モデルを作り始めています。
+
+31.
+        objective="binary",
+
+2値分類を行う指定です。
+今回は churn する / しない の2クラスです。
+
+32.
+        n_estimators=100,
+
+作成する決定木の本数です。
+まずは 100 本で試す構成です。
+
+33.
+        learning_rate=0.1,
+
+学習率です。
+1本ごとの木が予測をどれくらい修正するかの大きさを決めます。
+値が大きいほど学習は速いですが荒くなりやすく、
+小さいほど学習は慎重ですが木の本数を増やしたくなります。
+
+34.
+        random_state=42,
+
+LightGBM 内部の乱数を固定しています。
+再現性確保のためです。
+
+35.
+    )
+
+モデル定義の終わりです。
+
+36.
+    model.fit(X_train, y_train)
+
+学習データを使ってモデルを訓練しています。
+ここで LightGBM が、特徴量 X_train から y_train を予測できるように学習します。
+
+37.
+    y_pred = model.predict_proba(X_test)[:, 1]
+
+テストデータ X_test に対して予測確率を出しています。
+predict_proba の戻り値は通常、
+1列目 = クラス0の確率
+2列目 = クラス1の確率
+です。
+今回は class 1 を churn とみなしているため、[:, 1] で「離脱確率」だけを抜き出します。
+
+38.
+    auc = roc_auc_score(y_test, y_pred)
+
+正解ラベル y_test と予測確率 y_pred を使って AUC を算出しています。
+AUC は閾値に依存せず、モデルの順位付け性能を見る指標です。
+
+39.
+    local_model_path = "/tmp/model.pkl"
+
+Cloud Run コンテナ内の一時保存先です。
+Cloud Run では永続ディスク前提ではないため、一時ファイルは /tmp を使うのが基本です。
+
+40.
+    with open(local_model_path, "wb") as f:
+
+/tmp/model.pkl をバイナリ書き込みモードで開いています。
+with を使うことで、処理後に自動で close されます。
+
+41.
+        pickle.dump(model, f)
+
+学習済みの model オブジェクトをファイルに保存しています。
+これで Python から再ロード可能な model.pkl が作られます。
+
+42.
+    storage_client = storage.Client(project=PROJECT_ID)
+
+Cloud Storage に接続するクライアントを作成しています。
+
+43.
+    bucket = storage_client.bucket(BUCKET_NAME)
+
+保存先の GCS バケットを取得しています。
+例:
+my-portfolio-model-bucket
+
+44.
+    blob = bucket.blob("models/model.pkl")
+
+バケット内の保存先オブジェクト名を指定しています。
+GCS 上では models/model.pkl というパスに見える形で保存されます。
+
+45.
+    blob.upload_from_filename(local_model_path)
+
+ローカルの /tmp/model.pkl を GCS にアップロードしています。
+ここで初めて model.pkl が永続化されます。
+
+46.
+    return {
+
+結果を辞書として返し始めています。
+
+47.
+        "rows": len(df),
+
+学習に使ったデータ件数を返しています。
+ログや確認に便利です。
+
+48.
+        "auc": float(auc),
+
+AUC を返しています。
+numpy 型のままだと JSON 化で扱いづらい場合があるため、float に変換しています。
+
+49.
+        "model_path": f"gs://{BUCKET_NAME}/models/model.pkl",
+
+GCS 上の保存先パスを返しています。
+推論 API 側がこの場所から読み込む想定にできます。
+
+50.
+    }
+
+返却辞書の終わりです。
+
+51.
+@app.route("/", methods=["GET", "POST"])
+
+Flask のルーティングです。
+/ に対して GET または POST リクエストが来たら、次の関数を実行します。
+Cloud Scheduler や手動 curl からこの URL を呼べます。
+
+52.
+def run_training():
+
+HTTP リクエストを受けたときに実行される関数です。
+
+53.
+    result = train_and_save_model()
+
+学習・評価・保存の一連処理を実行しています。
+
+54.
+    return jsonify({"status": "ok", "result": result})
+
+辞書を JSON レスポンスとして返しています。
+例えば成功時は次のような JSON が返ります。
+
+{
+  "status": "ok",
+  "result": {
+    "rows": 12345,
+    "auc": 0.71,
+    "model_path": "gs://your-bucket/models/model.pkl"
+  }
+}
+
+55.
+if __name__ == "__main__":
+
+このファイルを直接 python で起動したときだけ、下の app.run を実行するという意味です。
+ローカル実行と Cloud Run 実行の両方に対応しやすくするための一般的な書き方です。
+
+56.
+    app.run(host="0.0.0.0", port=8080)
+
+Flask アプリを 8080 番ポートで起動しています。
+Cloud Run ではコンテナが HTTP リクエストを受けるため、指定ポートで待ち受ける必要があります。
+host="0.0.0.0" はコンテナ外からアクセスできるようにする指定です。
+
+このファイル全体の処理フロー
+--------------------------
+1. Cloud Run に HTTP リクエストが来る
+2. run_training() が呼ばれる
+3. train_and_save_model() が動く
+4. BigQuery から user_churn_features を取得する
+5. user_id と label_churn を分け、train/test に分割する
+6. LightGBM を学習する
+7. AUC を計算する
+8. model.pkl を /tmp に保存する
+9. GCS にアップロードする
+10. rows, auc, model_path を JSON で返す
+
+このコードの役割を1文で言うと
+------------------------------
+「Cloud Run を入口にして、BigQuery の特徴量テーブルから LightGBM モデルを学習し、学習済みモデルを GCS に保存する学習バッチ API」
+
+実務上の注意点
+--------------
+1. PROJECT_ID や BUCKET_NAME が未設定だと失敗する
+Cloud Run の環境変数に必ず設定する必要があります。
+
+2. Cloud Run のサービスアカウントに権限が必要
+- BigQuery 読み取り権限
+- BigQuery Job User
+- GCS 書き込み権限
+が必要です。
+
+3. /tmp は一時保存専用
+Cloud Run コンテナが再作成されると中身は消えます。
+永続保存は GCS に置くのが前提です。
+
+4. SELECT * は将来的に見直す
+列が増えたときに事故りやすいため、運用段階では必要列だけ取得するのが安全です。
+
+5. 今後の改善候補
+- 例外処理を入れる
+- ログ出力を追加する
+- 特徴量チェックを入れる
+- 学習日時入りのモデル名にする
+- early_stopping やハイパーパラメータ調整を追加する
+- 推論用 Cloud Run とモデルバージョンを連携する
+
+面接での説明例
+--------------
+この train_cloudrun.py について聞かれたら、次のように答えると分かりやすいです。
+
+「学習処理は Cloud Run 上で HTTP 経由で起動できるようにしており、BigQuery の特徴量テーブルからデータを取得して LightGBM を学習し、評価指標として AUC を算出したうえで、学習済みモデルを GCS に保存する構成にしています。」
+
+補足
+----
+この解説は、現在想定している Cloud Run 学習版コードに合わせた完全版です。
+今後あなたが train_cloudrun.py を実際に更新したら、その最新版に合わせてさらに精密に書き換えるのがベストです。

@@ -1,0 +1,16 @@
+■ Cloud Run
+　・サービス名
+　　predict-api
+　・リージョン
+　　asia-northeast1
+　・URL
+　　https://predict-api-786086621538.asia-northeast1.run.apphttps://predict-api-xxxxxx.a.run.app
+■ Artifact Registry
+　・リポジトリ
+　　predict-api-repo
+　・イメージ
+　　asia-northeast1-docker.pkg.dev/churn-analysis-491912/predict-api-repo/predict-api:v1
+■ Service Account
+　・predict-api-sa@churn-analysis-491912.iam.gserviceaccount.com
+■ GCS（モデル）
+　・gs://churn-model-bucket-ryo/models/model.pkl

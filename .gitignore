@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Google Cloud credentials
+application_default_credentials.json
+*.json.key
+secrets/
+
+# Terraform
+.terraform/
+infra/.terraform/
+infra/.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.backup
+
+# ML artifacts
+*.pkl
+
+# Local datasets
+*.csv
+data/processed/
+
+# OS
+.DS_Store
+Thumbs.db
+　　　
+# local notes
+dockerfile_line_by_line_explanation.txt

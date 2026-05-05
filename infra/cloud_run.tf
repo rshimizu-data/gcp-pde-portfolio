@@ -30,6 +30,31 @@ resource "google_cloud_run_v2_service" "predict_api" {
         value = var.project_id
       }
 
+      env {
+        name  = "BQ_LOG_TABLE"
+        value = "churn-analysis-491912.ml_logs.prediction_logs"
+      }
+
+      env {
+        name  = "MODEL_VERSION"
+        value = "v1"
+      }
+
+      env {
+        name  = "EXPERIMENT_ID"
+        value = "default"
+      }
+
+      env {
+        name  = "MODEL_VARIANT"
+        value = "default"
+      }
+
+      env {
+        name  = "PREDICTION_THRESHOLD"
+        value = "0.5"
+      }
+
       resources {
         limits = {
           cpu    = "1"
@@ -45,7 +70,7 @@ resource "google_cloud_run_v2_service" "predict_api" {
     ignore_changes = [
       client,
       client_version,
-      scaling,
+      template[0].containers[0].image,
       template[0].containers[0].resources[0].cpu_idle,
       template[0].containers[0].resources[0].startup_cpu_boost
     ]

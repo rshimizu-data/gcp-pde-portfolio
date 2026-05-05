@@ -7,25 +7,25 @@ variable "region" {
 }
 
 variable "service_name" {
- type = string
+  type = string
 }
 
 variable "repo_name" {
- type = string
+  type = string
 }
 
 variable "service_account_id" {
- type = string
+  type = string
 }
 
 variable "service_account_email" {
- type = string
+  type = string
 }
 
 variable "image_uri" {
- type = string
+  type = string
 }
 
 variable "model_uri" {
- type = string
+  type = string
 }

@@ -15,6 +15,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ★デバッグ（今後のトラブル防止）
+      - name: Debug - show directory structure
+        run: |
+          pwd
+          ls -R
+
+      # ★パス修正（ここが本質）
       - name: Check mlops SQL files exist
         run: |
           test -f sql/mlops/create_drift_detection_results.sql

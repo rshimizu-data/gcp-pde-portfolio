@@ -1,9 +1,6 @@
-flask
 pandas
-scikit-learn
 lightgbm
+scikit-learn
 google-cloud-bigquery
 google-cloud-storage
-db-dtypes
 pyarrow
-google-cloud-aiplatform

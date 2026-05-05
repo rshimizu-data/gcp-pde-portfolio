@@ -36,6 +36,6 @@ data/processed/
 # OS
 .DS_Store
 Thumbs.db
-　　　
+
 # local notes
 dockerfile_line_by_line_explanation.txt

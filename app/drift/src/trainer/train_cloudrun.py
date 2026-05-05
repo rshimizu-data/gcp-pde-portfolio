@@ -2,26 +2,23 @@ from __future__ import annotations
 
 import os
 import pickle
-import sys
 
 import lightgbm as lgb
 import pandas as pd
+from flask import Flask, jsonify
 from google.cloud import bigquery, storage
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
-from vertex_ai_register import register_to_vertex
+
+app = Flask(__name__)
 
 PROJECT_ID = os.environ.get("PROJECT_ID")
 DATASET = os.environ.get("BQ_DATASET", "feature")
-
-# ⑦-10 Feature Store拡張後の学習用テーブル
-TABLE = os.environ.get("BQ_TABLE", "user_churn_features_enriched")
-
+TABLE = os.environ.get("BQ_TABLE", "user_churn_features")
 BUCKET_NAME = os.environ.get("MODEL_BUCKET")
 BQ_LOCATION = os.environ.get("BQ_LOCATION", "asia-northeast1")
 
 TARGET_COL = "label_churn"
-
 CATEGORICAL_COLS = [
     "plan_type",
     "gender",
@@ -35,13 +32,7 @@ DROP_COLS = [
     "future_login_count_30d",
     "signup_date",
     "base_date",
-    "login_per_active_day_7d",
-
-    # ⑦-10で追加された管理・日時系カラム
-    # LightGBMの学習特徴量としては使わない
-    "latest_prediction_time",
-    "feature_created_at",
-    "created_at",
+    "login_per_active_day_7d",  # 追加
 ]
 
 
@@ -82,13 +73,18 @@ def train_and_save_model() -> dict:
 
     model = lgb.LGBMClassifier(
         objective="binary",
+
         n_estimators=500,
         learning_rate=0.03,
+
         num_leaves=31,
         min_child_samples=20,
+
         subsample=0.8,
         colsample_bytree=0.8,
+
         class_weight="balanced",
+
         random_state=42,
     )
 
@@ -110,15 +106,8 @@ def train_and_save_model() -> dict:
 
     storage_client = storage.Client(project=PROJECT_ID)
     bucket = storage_client.bucket(BUCKET_NAME)
-
-    MODEL_VERSION = os.environ.get("MODEL_VERSION", "v1")
-    model_path = f"models/versions/{MODEL_VERSION}/model.pkl"
-
-    blob = bucket.blob(model_path)
+    blob = bucket.blob("models/model.pkl")
     blob.upload_from_filename(local_model_path)
-
-    model_uri = f"gs://{BUCKET_NAME}/{model_path}"
-    register_to_vertex(auc, model_uri)
 
     importance_df = pd.DataFrame(
         {
@@ -132,13 +121,16 @@ def train_and_save_model() -> dict:
         "train_rows": int(len(X_train)),
         "test_rows": int(len(X_test)),
         "auc": float(auc),
-        "model_path": model_uri,
-        "feature_count": int(len(X_train.columns)),
+        "model_path": f"gs://{BUCKET_NAME}/models/model.pkl",
         "top_features": importance_df.head(10).to_dict(orient="records"),
     }
 
 
-if __name__ == "__main__":
+@app.route("/", methods=["GET", "POST"])
+def run_training():
     result = train_and_save_model()
-    print(result)
-    sys.exit(0)
+    return jsonify({"status": "ok", "result": result})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)

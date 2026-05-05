@@ -52,7 +52,7 @@ jobs:
             --platform=managed \
             --service-account=${{ secrets.RUNTIME_SERVICE_ACCOUNT }} \
             --allow-unauthenticated \
-            --set-env-vars="MODEL_URI=${{ secrets.MODEL_URI }},GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" \
+            --set-env-vars="MODEL_URI=${{ secrets.MODEL_URI }},GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},BQ_LOG_TABLE=${{ secrets.GCP_PROJECT_ID }}.ml_logs.prediction_logs,MODEL_VERSION=v1,EXPERIMENT_ID=default,MODEL_VARIANT=default,PREDICTION_THRESHOLD=0.5" \
             --port=8080 \
             --memory=1Gi \
             --cpu=1 \

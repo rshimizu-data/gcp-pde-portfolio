@@ -1,37 +1,59 @@
-name: Terraform Plan
+name: terraform-plan
 
 on:
   pull_request:
+    branches:
+      - main
     paths:
       - "infra/**"
       - ".github/workflows/terraform-plan.yml"
 
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   terraform-plan:
-    name: Terraform plan
+    name: Terraform Plan
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: infra
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ secrets.GCP_REGION }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.7
+          terraform_version: 1.6.6
 
       - name: Terraform fmt check
+        working-directory: infra
         run: terraform fmt -check -recursive
 
-      - name: Terraform init without backend
-        run: terraform init -backend=false
+      - name: Terraform init
+        working-directory: infra
+        run: terraform init
 
       - name: Terraform validate
+        working-directory: infra
         run: terraform validate
 
       - name: Terraform plan
-        run: terraform plan -no-color
+        working-directory: infra
+        run: terraform plan -var-file="envs/prod.tfvars" -no-color

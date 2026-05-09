@@ -1,5 +1,5 @@
 from google.cloud import bigquery
-from drift_metrics import calc_mean_diff
+from src.drift.drift_metrics import calc_mean_diff
 from src.events.publish_event import publish_mlops_event
 import datetime
 import math
@@ -185,7 +185,11 @@ def main():
     # Drift判定
     drifted_results = [r for r in results if r["is_drift"]]
 
-    if drifted_results:
+    retraining_required = len(drifted_results) > 0
+
+    print(f"retraining_required={retraining_required}")
+
+    if retraining_required:
         print("Drift detected. Publish event to Pub/Sub.")
 
         publish_mlops_event(
@@ -193,8 +197,14 @@ def main():
             payload={
                 "source": "drift_check_job",
                 "project_id": PROJECT_ID,
+                "retraining_required": retraining_required,
+                "reason": "drift_detected",
                 "drift_count": len(drifted_results),
                 "features": [r["feature_name"] for r in drifted_results],
+                "drift_scores": {
+                    r["feature_name"]: r["drift_score"]
+                    for r in drifted_results
+                },
                 "model_version": drifted_results[0].get("model_version"),
                 "variant": drifted_results[0].get("variant"),
                 "experiment_id": drifted_results[0].get("experiment_id"),
@@ -202,9 +212,28 @@ def main():
             },
         )
 
+        alert_event = {
+            "source": "drift_check_job",
+            "project_id": PROJECT_ID,
+            "type": "drift_detected",
+            "severity": "warning",
+            "message": "Drift detected. Retraining required.",
+            "retraining_required": True,
+            "reason": "drift_detected",
+            "drift_count": len(drifted_results),
+            "features": [r["feature_name"] for r in drifted_results],
+        }
+
+        publish_mlops_event(
+            event_type="drift_alert",
+            payload=alert_event,
+            topic_id="mlops-alerts",
+        )
+        
         print("status: drift_detected")
         print("action: publish_pubsub_event")
         print("event_type: drift_detected")
+        print("reason: drift_detected")
 
     else:
         print("No drift. Skip event publishing.")

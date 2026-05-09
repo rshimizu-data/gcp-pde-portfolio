@@ -39,3 +39,9 @@ Thumbs.db
 
 # local notes
 dockerfile_line_by_line_explanation.txt
+
+# Google Cloud credentials
+application_default_credentials.json
+*.json.key
+*key*.json
+secrets/

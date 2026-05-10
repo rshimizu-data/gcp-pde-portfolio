@@ -34,6 +34,9 @@ jobs:
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Show authenticated account
+        run: gcloud auth list
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:

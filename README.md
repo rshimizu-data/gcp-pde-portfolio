@@ -1,0 +1,7 @@
+Add-Content -Path ".\README.md" -Value ""
+Add-Content -Path ".\README.md" -Value "## GitOps operation note"
+Add-Content -Path ".\README.md" -Value ""
+Add-Content -Path ".\README.md" -Value "- Terraform changes are reviewed by PR."
+Add-Content -Path ".\README.md" -Value "- terraform-plan must be checked before merge."
+Add-Content -Path ".\README.md" -Value "- destroy / replace must be reviewed manually."
+Add-Content -Path ".\README.md" -Value "- terraform-apply is executed manually only when needed."

@@ -1,3 +1,5 @@
+# GitOps PR trigger verification comment
+
 name: terraform-plan
 
 on:

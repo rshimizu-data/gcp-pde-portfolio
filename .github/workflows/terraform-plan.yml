@@ -9,6 +9,7 @@ on:
     paths:
       - "infra/**"
       - ".github/workflows/terraform-plan.yml"
+      - ".github/workflows/deploy-predict-api.yml"
 
   workflow_dispatch:
 

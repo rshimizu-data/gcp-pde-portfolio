@@ -23,3 +23,21 @@ resource "google_pubsub_subscription" "alert_notifier_sub" {
 
   ack_deadline_seconds = 10
 }
+
+resource "google_pubsub_topic" "user_events" {
+  name = "user-events-topic"
+
+  labels = {
+    system     = "streaming"
+    purpose    = "user-events"
+    managed_by = "terraform"
+  }
+}
+
+resource "google_pubsub_subscription" "user_events_sub" {
+
+  name  = "user-events-sub"
+  topic = google_pubsub_topic.user_events.name
+
+  ack_deadline_seconds = 10
+}
